@@ -13,10 +13,10 @@ def train_model(
     model,
     train_loader,
     val_loader,
-    epochs=30,
-    lr=5e-4,
+    epochs=60,       # more training epochs
+    lr=2e-4,         # lower learning rate
     device="cpu",
-    patience=5,
+    patience=10,     # higher patience before stopping
     save_path="best_model.pth"
 ):
     model = model.to(device)
