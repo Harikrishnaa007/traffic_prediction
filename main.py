@@ -46,6 +46,7 @@ from models.hybrid_model import HybridModel
 from training.train import train_model
 from training.evaluate import evaluate_model
 from training.log_metrics import log_experiment
+from visualization.plot_predictions import plot_predictions  # ✅ NEW IMPORT
 
 
 def main():
@@ -120,10 +121,16 @@ def main():
     # 7️⃣  Evaluate model
     # -------------------------------
     print("📈 Evaluating best model on test data...")
-    test_mae, test_rmse = evaluate_model(model, test_loader)
+    test_mae, test_rmse, Y_pred, Y_true = evaluate_model(model, test_loader, device=device)
 
     # -------------------------------
-    # 8️⃣  Log experiment
+    # 8️⃣  Visualize Predictions
+    # -------------------------------
+    print("🎨 Plotting predicted vs actual traffic speeds...")
+    plot_predictions(Y_true, Y_pred, num_sensors=4, save_path="outputs/pred_vs_actual.png")
+
+    # -------------------------------
+    # 9️⃣  Log experiment
     # -------------------------------
     dataset_name = os.path.basename(dataset_path).replace(".h5", "").upper()
     log_experiment(
