@@ -1,5 +1,6 @@
 """
-Training loop for Hybrid LSTM + Transformer-XL with Early Stopping and LR Scheduler.
+Training loop for Hybrid LSTM + Transformer-XL with Early Stopping,
+Learning Rate Scheduler, and Loss Visualization.
 """
 
 import torch
@@ -22,6 +23,7 @@ def train_model(
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
 
+    # 🔧 Learning Rate Scheduler (reduce LR if val loss plateaus)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=2
     )
@@ -93,6 +95,8 @@ def train_model(
     plt.title("Training vs Validation Loss")
     plt.legend()
     plt.grid(True)
+    plt.tight_layout()
     plt.show()
 
-    return model
+    # ✅ Return both model and losses for external plotting/analysis
+    return model, train_loss_history, val_loss_history
