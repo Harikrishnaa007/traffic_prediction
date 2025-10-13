@@ -31,18 +31,13 @@ print(dfpems.head(10))
 
 
 """
-Main pipeline: preprocessing → dataset → model → training → evaluation
+Main pipeline: preprocessing → dataset → model → training → evaluation → logging
 """
 
-"""
-Main pipeline for Hybrid LSTM + Transformer-XL:
-Data preprocessing → Dataset creation → Model training → Evaluation
-"""
-
+import os
+import argparse
 import torch
 import matplotlib.pyplot as plt
-import argparse
-import os
 from preprocessing.preprocess import load_and_clean_data, normalize_data
 from preprocessing.features import add_time_features, build_adjacency_matrix
 from preprocessing.windowing import create_windowed_dataset
@@ -50,36 +45,66 @@ from dataset.traffic_dataset import get_dataloaders
 from models.hybrid_model import HybridModel
 from training.train import train_model
 from training.evaluate import evaluate_model
+from training.log_metrics import log_experiment
 
 
-def main(epochs=30, lr=5e-4, device="cuda"):
-    # 1️⃣ Data Loading and Preprocessing
-    print("🔹 Loading and preprocessing data...")
-    df_clean = load_and_clean_data("data/metr-la.h5")
+def main():
+    # -------------------------------
+    # 1️⃣  Parse arguments
+    # -------------------------------
+    parser = argparse.ArgumentParser(description="Train Hybrid LSTM + TransformerXL for traffic prediction")
+    parser.add_argument("--epochs", type=int, default=60, help="Number of training epochs")
+    parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device")
+    parser.add_argument("--patience", type=int, default=10, help="Early stopping patience")
+    parser.add_argument("--dataset", type=str, default="data/metr-la.h5", help="Dataset path")
+    args = parser.parse_args()
+
+    epochs, lr, device, patience, dataset_path = args.epochs, args.lr, args.device, args.patience, args.dataset
+
+    print("\n🔹 Loading and preprocessing data...")
+
+    # -------------------------------
+    # 2️⃣  Load + preprocess dataset
+    # -------------------------------
+    df_clean = load_and_clean_data(dataset_path)
     df_norm, mean, std = normalize_data(df_clean)
     df_time = add_time_features(df_norm)
     adj = build_adjacency_matrix(df_clean)
+
     print(f"✅ Data ready: {df_time.shape}")
 
-    # 2️⃣ Create Train/Val/Test Datasets
+    # -------------------------------
+    # 3️⃣  Prepare windowed dataset
+    # -------------------------------
     (X_train, Y_train), (X_val, Y_val), (X_test, Y_test) = create_windowed_dataset(df_time)
-    train_loader, val_loader, test_loader = get_dataloaders(
-        X_train, Y_train, X_val, Y_val, X_test, Y_test
-    )
+    train_loader, val_loader, test_loader = get_dataloaders(X_train, Y_train, X_val, Y_val, X_test, Y_test)
 
-    # 3️⃣ Initialize Model
+    # -------------------------------
+    # 4️⃣  Build model
+    # -------------------------------
     model = HybridModel(input_dim=X_train.shape[-1], output_dim=Y_train.shape[-1])
     print(f"✅ Model initialized — input_dim={X_train.shape[-1]}, output_dim={Y_train.shape[-1]}")
 
-    # 4️⃣ Train Model
-    print(f"🚀 Training for {epochs} epochs (lr={lr}, device={device})...")
+    # -------------------------------
+    # 5️⃣  Train model
+    # -------------------------------
+    print(f"🚀 Training for {epochs} epochs (lr={lr:.6f}, device={device})...")
     model, train_losses, val_losses = train_model(
-        model, train_loader, val_loader, epochs=epochs, lr=lr, device=device
+        model,
+        train_loader,
+        val_loader,
+        epochs=epochs,
+        lr=lr,
+        device=device,
+        patience=patience
     )
 
-    # 5️⃣ Plot & Save Loss Curve
+    # -------------------------------
+    # 6️⃣  Plot loss curve
+    # -------------------------------
     os.makedirs("outputs", exist_ok=True)
-    plt.figure(figsize=(8,5))
+    plt.figure(figsize=(8, 5))
     plt.plot(train_losses, label="Train Loss")
     plt.plot(val_losses, label="Validation Loss")
     plt.xlabel("Epoch")
@@ -87,23 +112,34 @@ def main(epochs=30, lr=5e-4, device="cuda"):
     plt.title("Training vs Validation Loss")
     plt.legend()
     plt.grid(True)
-    plt.tight_layout()
     plt.savefig("outputs/loss_curve.png")
-    plt.show()
+    plt.close()
     print("📊 Saved loss curve → outputs/loss_curve.png")
 
-    # 6️⃣ Evaluate Model
+    # -------------------------------
+    # 7️⃣  Evaluate model
+    # -------------------------------
     print("📈 Evaluating best model on test data...")
-    evaluate_model(model, test_loader)
+    test_mae, test_rmse = evaluate_model(model, test_loader)
+
+    # -------------------------------
+    # 8️⃣  Log experiment
+    # -------------------------------
+    dataset_name = os.path.basename(dataset_path).replace(".h5", "").upper()
+    log_experiment(
+        model_name="Hybrid_LSTM_TransformerXL",
+        dataset=dataset_name,
+        epochs=epochs,
+        lr=lr,
+        patience=patience,
+        best_val_loss=min(val_losses),
+        test_mae=test_mae,
+        test_rmse=test_rmse,
+        early_stop_epoch=len(val_losses),
+        device=device,
+        notes=f"Tuned run: epochs={epochs}, lr={lr}, patience={patience}"
+    )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
-    parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
-    parser.add_argument("--device", type=str, default="cuda", help="Device: cpu or cuda")
-    args = parser.parse_args()
-
-    os.makedirs("outputs", exist_ok=True)
-    main(epochs=args.epochs, lr=args.lr, device=args.device)
-
+    main()
