@@ -87,7 +87,8 @@ def main():
     # Load dataset and model
     with st.spinner("Loading dataset and model..."):
         df_time, mean, std = load_dataset(dataset_path)
-        model = load_model(model_path, input_dim=df_time.shape[1], output_dim=1, device=device)
+        output_dim = df_time.shape[1]  # match training setup
+        model = load_model(model_path, input_dim=df_time.shape[1], output_dim=output_dim, device=device)
 
     st.success(f"✅ Loaded model and dataset: {dataset_choice}")
     st.write(f"Dataset shape: {df_time.shape}")
