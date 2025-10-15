@@ -1,6 +1,6 @@
 """
 Training loop for Hybrid LSTM + Transformer-XL with Early Stopping,
-Learning Rate Scheduler, Dataset-Specific Saving, and Loss Visualization.
+Configurable Learning Rate Scheduler, Dataset-Specific Saving, and Loss Visualization.
 """
 
 import torch
@@ -15,29 +15,43 @@ def train_model(
     model,
     train_loader,
     val_loader,
-    epochs=60,       # more training epochs
-    lr=2e-4,         # lower learning rate
+    epochs=60,
+    lr=2e-4,
     device="cpu",
-    patience=10,     # higher patience before stopping
-    dataset_name="default",  # <-- add dataset tag for filename
+    patience=10,
+    dataset_name="default",
+    scheduler_type="reduce",   # ✅ can be "reduce", "cosine", or "step"
+    plot_curve=False           # ✅ avoid duplicate plotting when called from main.py
 ):
+    """
+    Train the model with early stopping and flexible learning rate schedulers.
+
+    Returns:
+        model (nn.Module): trained model with best weights
+        train_loss_history (list): per-epoch training loss
+        val_loss_history (list): per-epoch validation loss
+        optimizer (torch.optim.Optimizer): final optimizer (for chaining schedulers)
+    """
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
 
-    # 🔧 Learning Rate Scheduler (reduce LR if val loss plateaus)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2
-    )
+    # 🔧 Flexible scheduler selection
+    if scheduler_type == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+        print("📉 Using CosineAnnealingLR scheduler")
+    elif scheduler_type == "step":
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+        print("📉 Using StepLR scheduler")
+    else:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=2)
+        print("📉 Using ReduceLROnPlateau scheduler (default)")
 
     best_val_loss = float("inf")
     patience_counter = 0
+    train_loss_history, val_loss_history = [], []
 
-    # 📊 Track loss for plotting
-    train_loss_history = []
-    val_loss_history = []
-
-    # 🌟 Auto name model file per dataset
+    # 🌟 Auto-named model file per dataset
     save_path = f"best_model_{dataset_name.lower().replace('.h5','')}.pth"
 
     for epoch in range(1, epochs + 1):
@@ -66,13 +80,17 @@ def train_model(
                 val_losses.append(loss.item())
 
         avg_val_loss = np.mean(val_losses)
-        scheduler.step(avg_val_loss)
 
-        # 📈 Store losses
+        # 🔄 Step scheduler
+        if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            scheduler.step(avg_val_loss)
+        else:
+            scheduler.step()
+
+        # 📈 Track losses
         train_loss_history.append(avg_train_loss)
         val_loss_history.append(avg_val_loss)
 
-        # ---- Print progress ----
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch}/{epochs}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, LR: {current_lr:.6f}")
 
@@ -85,23 +103,23 @@ def train_model(
         else:
             patience_counter += 1
             if patience_counter >= patience:
-                print(f"⏹️ Early stopping at epoch {epoch}")
+                print(f"⏹️ Early stopping triggered at epoch {epoch}")
                 break
 
     # ---- Reload best weights ----
     model.load_state_dict(torch.load(save_path))
 
-    # 📊 Plot training and validation loss
-    plt.figure(figsize=(8, 5))
-    plt.plot(train_loss_history, label="Train Loss")
-    plt.plot(val_loss_history, label="Validation Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("MSE Loss")
-    plt.title("Training vs Validation Loss")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    # 📊 Plot training/validation loss (if standalone)
+    if plot_curve:
+        plt.figure(figsize=(8, 5))
+        plt.plot(train_loss_history, label="Train Loss")
+        plt.plot(val_loss_history, label="Validation Loss")
+        plt.xlabel("Epoch")
+        plt.ylabel("MSE Loss")
+        plt.title("Training vs Validation Loss")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
 
-    # ✅ Return both model and losses
-    return model, train_loss_history, val_loss_history
+    return model, train_loss_history, val_loss_history, optimizer
