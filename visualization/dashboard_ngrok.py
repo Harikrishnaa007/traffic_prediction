@@ -140,17 +140,18 @@ def main():
     dataset_map = {
         "METR-LA": {
             "data": "data/metr-la.h5",
-            "model": "/content/drive/MyDrive/traffic_prediction/best_model_metrla.pth",
+            "model": "/content/drive/MyDrive/traffic_prediction/best_model_metrla_clean.pth",
             "input_dim": 215,
             "output_dim": 207,
         },
         "PEMS-BAY": {
             "data": "data/pems-bay.h5",
             "model": "/content/drive/MyDrive/traffic_prediction/best_model_pemsbay.pth",
-            "input_dim": 333,
-            "output_dim": 333,
+            "input_dim": 333,  # sensors + time features
+            "output_dim": 325, # ✅ sensors only
         },
     }
+
 
     ds_info = dataset_map[dataset_choice]
     st.sidebar.success(f"✅ Loaded {dataset_choice} configuration")
