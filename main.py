@@ -103,8 +103,8 @@ def main():
     # 5️⃣ Train model
     # -------------------------------
     print(f"🚀 Training for {epochs} epochs (lr={lr:.6f}, batch_size={batch_size}, device={device})...")
-
-    # Train and get optimizer
+    
+    # Create optimizer and scheduler before training (to pass scheduler_type into train_model)
     model, train_losses, val_losses, optimizer = train_model(
         model,
         train_loader,
@@ -113,19 +113,10 @@ def main():
         lr=lr,
         device=device,
         patience=patience,
-        dataset_name=os.path.basename(dataset_path)
+        dataset_name=os.path.basename(dataset_path),
+        scheduler_type=scheduler_type  # ✅ now linked to --lr-scheduler flag
     )
 
-    # ✅ Optional learning rate scheduler
-    if scheduler_type != "none":
-        if scheduler_type == "cosine":
-            scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
-            print("📉 Using Cosine Annealing LR scheduler")
-        elif scheduler_type == "step":
-            scheduler = StepLR(optimizer, step_size=20, gamma=0.5)
-            print("📉 Using StepLR scheduler")
-    else:
-        scheduler = None
 
     # -------------------------------
     # 6️⃣ Plot loss curve
@@ -149,7 +140,8 @@ def main():
     # 7️⃣ Evaluate model
     # -------------------------------
     print("📈 Evaluating best model on test data...")
-    test_mae, test_rmse, Y_pred, Y_true = evaluate_model(model, test_loader, device=device)
+    test_mae, test_rmse, Y_pred, Y_true = evaluate_model(model, test_loader, device=device, mean=mean, std=std)
+
 
     # -------------------------------
     # 8️⃣ Visualize predictions
