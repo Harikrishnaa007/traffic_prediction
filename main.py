@@ -51,7 +51,7 @@ from visualization.plot_predictions import plot_predictions  # ✅ NEW IMPORT
 
 def main():
     # -------------------------------
-    # 1️⃣  Parse arguments
+    # 1️⃣ Parse arguments
     # -------------------------------
     parser = argparse.ArgumentParser(description="Train Hybrid LSTM + TransformerXL for traffic prediction")
     parser.add_argument("--epochs", type=int, default=60, help="Number of training epochs")
@@ -62,11 +62,12 @@ def main():
     args = parser.parse_args()
 
     epochs, lr, device, patience, dataset_path = args.epochs, args.lr, args.device, args.patience, args.dataset
+    dataset_name = os.path.basename(dataset_path).replace(".h5", "").upper()
 
-    print("\n🔹 Loading and preprocessing data...")
+    print(f"\n🔹 Loading and preprocessing data for {dataset_name}...")
 
     # -------------------------------
-    # 2️⃣  Load + preprocess dataset
+    # 2️⃣ Load + preprocess dataset
     # -------------------------------
     df_clean = load_and_clean_data(dataset_path)
     df_norm, mean, std = normalize_data(df_clean)
@@ -76,17 +77,17 @@ def main():
     print(f"✅ Data ready: {df_time.shape}")
 
     # -------------------------------
-    # 3️⃣  Prepare windowed dataset
+    # 3️⃣ Prepare windowed dataset
     # -------------------------------
     (X_train, Y_train), (X_val, Y_val), (X_test, Y_test) = create_windowed_dataset(df_time)
     train_loader, val_loader, test_loader = get_dataloaders(X_train, Y_train, X_val, Y_val, X_test, Y_test)
 
     # -------------------------------
-    # 4️⃣  Build model
+    # 4️⃣ Build model
     # -------------------------------
     model = HybridModel(input_dim=X_train.shape[-1], output_dim=Y_train.shape[-1])
     print(f"✅ Model initialized — input_dim={X_train.shape[-1]}, output_dim={Y_train.shape[-1]}")
-
+    
     # -------------------------------
     # 5️⃣  Train model
     # -------------------------------
@@ -98,41 +99,46 @@ def main():
         epochs=epochs,
         lr=lr,
         device=device,
-        patience=patience
+        patience=patience,
+        dataset_name=os.path.basename(dataset_path)  # ✅ Added line — for unique model naming
     )
 
+
     # -------------------------------
-    # 6️⃣  Plot loss curve
+    # 6️⃣ Plot loss curve (per dataset)
     # -------------------------------
     os.makedirs("outputs", exist_ok=True)
+    loss_curve_path = f"outputs/{dataset_name.lower()}_loss_curve.png"
+
     plt.figure(figsize=(8, 5))
     plt.plot(train_losses, label="Train Loss")
     plt.plot(val_losses, label="Validation Loss")
     plt.xlabel("Epoch")
     plt.ylabel("MSE Loss")
-    plt.title("Training vs Validation Loss")
+    plt.title(f"Training vs Validation Loss — {dataset_name}")
     plt.legend()
     plt.grid(True)
-    plt.savefig("outputs/loss_curve.png")
+    plt.savefig(loss_curve_path)
     plt.close()
-    print("📊 Saved loss curve → outputs/loss_curve.png")
+    print(f"📊 Saved loss curve → {loss_curve_path}")
 
     # -------------------------------
-    # 7️⃣  Evaluate model
+    # 7️⃣ Evaluate model
     # -------------------------------
     print("📈 Evaluating best model on test data...")
     test_mae, test_rmse, Y_pred, Y_true = evaluate_model(model, test_loader, device=device)
 
     # -------------------------------
-    # 8️⃣  Visualize Predictions
+    # 8️⃣ Visualize Predictions
     # -------------------------------
+    pred_plot_path = f"outputs/{dataset_name.lower()}_pred_vs_actual.png"
     print("🎨 Plotting predicted vs actual traffic speeds...")
-    plot_predictions(Y_true, Y_pred, num_sensors=4, save_path="outputs/pred_vs_actual.png")
+    plot_predictions(Y_true, Y_pred, num_sensors=4, save_path=pred_plot_path)
+    print(f"📈 Saved prediction comparison → {pred_plot_path}")
 
     # -------------------------------
-    # 9️⃣  Log experiment
+    # 9️⃣ Log experiment
     # -------------------------------
-    dataset_name = os.path.basename(dataset_path).replace(".h5", "").upper()
     log_experiment(
         model_name="Hybrid_LSTM_TransformerXL",
         dataset=dataset_name,
