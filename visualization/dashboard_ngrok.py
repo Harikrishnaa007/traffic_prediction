@@ -47,7 +47,7 @@ def load_dataset(dataset_path):
 
 
 # ===============================
-# 🧠 Prediction helper (fixed)
+# 🧠 Prediction helper (final version)
 # ===============================
 def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     """
@@ -93,15 +93,15 @@ def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     preds_sensor = preds_sensors[:, sensor_idx]
     actual_sensor = actual_sensors[:, sensor_idx]
 
-    # --- ✅ Debug sanity check (optional, safe to keep) ---
-    print(
-        f"[{sensor_id}] preds range {preds_sensor.min():.2f}-{preds_sensor.max():.2f}, "
-        f"actual range {actual_sensor.min():.2f}-{actual_sensor.max():.2f}, "
-        f"features={total_features}, sensors={num_sensors}"
-    )
+    # --- ✅ Debug sanity check ---
+    print(f"\n[{sensor_id}]")
+    print(f"Preds (normalized) sample: {preds_sensor[:6]}")
+    print(f"Actual (normalized) sample: {actual_sensor[:6]}")
+    print(f"Preds mean/std: {preds_sensor.mean():.3f}/{preds_sensor.std():.3f}")
+    print(f"Actual mean/std: {actual_sensor.mean():.3f}/{actual_sensor.std():.3f}")
+    print(f"features={total_features}, sensors={num_sensors}")
 
     return preds_sensor, actual_sensor
-
 
 
 # ===============================
