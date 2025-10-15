@@ -1,6 +1,6 @@
 """
 Training loop for Hybrid LSTM + Transformer-XL with Early Stopping,
-Learning Rate Scheduler, and Loss Visualization.
+Learning Rate Scheduler, Dataset-Specific Saving, and Loss Visualization.
 """
 
 import torch
@@ -8,6 +8,8 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+
 
 def train_model(
     model,
@@ -17,7 +19,7 @@ def train_model(
     lr=2e-4,         # lower learning rate
     device="cpu",
     patience=10,     # higher patience before stopping
-    save_path="best_model.pth"
+    dataset_name="default",  # <-- add dataset tag for filename
 ):
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -34,6 +36,9 @@ def train_model(
     # 📊 Track loss for plotting
     train_loss_history = []
     val_loss_history = []
+
+    # 🌟 Auto name model file per dataset
+    save_path = f"best_model_{dataset_name.lower().replace('.h5','')}.pth"
 
     for epoch in range(1, epochs + 1):
         # ---- Training ----
@@ -76,7 +81,7 @@ def train_model(
             best_val_loss = avg_val_loss
             patience_counter = 0
             torch.save(model.state_dict(), save_path)
-            print(f"  ✅ Best model saved at epoch {epoch}")
+            print(f"  ✅ Best model saved at epoch {epoch} → {save_path}")
         else:
             patience_counter += 1
             if patience_counter >= patience:
@@ -98,5 +103,5 @@ def train_model(
     plt.tight_layout()
     plt.show()
 
-    # ✅ Return both model and losses for external plotting/analysis
+    # ✅ Return both model and losses
     return model, train_loss_history, val_loss_history
