@@ -54,9 +54,11 @@ def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     """
     Predicts next few timesteps for a selected sensor.
     Handles both METR-LA and PEMS-BAY automatically.
+    Shows metrics and debug info in the Streamlit UI.
     """
     import torch
     import numpy as np
+    from sklearn.metrics import mean_absolute_error, mean_squared_error
 
     # --- Create windowed dataset ---
     (X_train, Y_train), (X_val, Y_val), (X_test, Y_test) = create_windowed_dataset(df_time)
@@ -69,32 +71,33 @@ def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
         preds = model(X_latest).cpu().numpy()[0]  # shape: (output_len, total_features)
 
     total_features = preds.shape[1]
-    num_sensors = len(std)  # real sensor count (e.g., 207 or 325)
+    num_sensors = len(std)  # true sensor count (e.g., 207 or 325)
 
-    # --- Extract true target window for sensors only ---
+    # --- True targets for sensors only ---
     Y_true = Y_test[-1].numpy()[:, :num_sensors]
 
-    # --- Match normalization stats ---
+    # --- Normalization stats ---
     sensor_cols = std.index
     std_sensors = std.values
     mean_sensors = mean.values
 
-    # --- Denormalize ---
+    # --- Denormalize only sensor outputs ---
     preds_sensors = preds[:, :num_sensors] * std_sensors + mean_sensors
     actual_sensors = (Y_true * std_sensors) + mean_sensors
 
     # --- Sensor index ---
     sensor_idx = list(sensor_cols).index(sensor_id)
 
-    # --- Selected sensor values ---
+    # --- Selected sensor time series ---
     preds_sensor = preds_sensors[:, sensor_idx]
     actual_sensor = actual_sensors[:, sensor_idx]
 
-    # --- Compute metrics ---
+    # --- Compute metrics (compatible across sklearn versions) ---
     mae = mean_absolute_error(actual_sensor, preds_sensor)
-    rmse = mean_squared_error(actual_sensor, preds_sensor, squared=False)
+    mse = mean_squared_error(actual_sensor, preds_sensor)   # returns MSE
+    rmse = np.sqrt(mse)                                     # RMSE computed portably
 
-    # --- Display metrics + debug info directly in Streamlit ---
+    # --- Display metrics + debug info inside Streamlit ---
     st.markdown(f"""
     ### ⚙️ Prediction Summary
     **Sensor:** `{sensor_id}`  
@@ -105,6 +108,7 @@ def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     """)
 
     return preds_sensor, actual_sensor
+
 
 
 # ===============================
