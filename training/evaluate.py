@@ -1,7 +1,5 @@
 """
-Model evaluation for Hybrid LSTM + TransformerXL.
-Computes MAE, RMSE, and returns predictions for visualization.
-Now supports denormalized evaluation with automatic dimension alignment.
+Final version — robust to shape mismatches between model outputs and normalization stats.
 """
 
 import torch
@@ -11,10 +9,6 @@ from math import sqrt
 
 
 def evaluate_model(model, test_loader, device="cuda", mean=None, std=None):
-    """
-    Evaluates the model on test data and returns (MAE, RMSE, Y_pred, Y_true).
-    Automatically handles dimensional mismatch between input and output sensors.
-    """
     model.eval()
     model.to(device)
 
@@ -46,28 +40,34 @@ def evaluate_model(model, test_loader, device="cuda", mean=None, std=None):
     Y_pred = torch.cat(all_preds)
     Y_true = torch.cat(all_trues)
 
-    # --- Optional denormalization ---
+    # --- Safe denormalization ---
     if mean is not None and std is not None:
-        # Convert to numpy
         Y_pred_np = Y_pred.numpy()
         Y_true_np = Y_true.numpy()
 
-        # Extract only the sensor columns (match prediction dimension)
-        num_sensors = Y_pred_np.shape[-1]
+        num_pred_sensors = Y_pred_np.shape[-1]
+        num_stats = len(mean)
 
-        mean_sensors = np.array(mean[:num_sensors])
-        std_sensors = np.array(std[:num_sensors])
+        # 🔧 Auto-align mean/std to match model output
+        min_len = min(num_pred_sensors, num_stats)
 
-        # Broadcast correctly: (samples, horizon, sensors)
+        mean_sensors = np.array(mean[:min_len])
+        std_sensors = np.array(std[:min_len])
+
+        # If model predicts extra columns → trim
+        Y_pred_np = Y_pred_np[..., :min_len]
+        Y_true_np = Y_true_np[..., :min_len]
+
+        # ✅ Now broadcast-safe
         Y_pred_denorm = Y_pred_np * std_sensors + mean_sensors
         Y_true_denorm = Y_true_np * std_sensors + mean_sensors
 
-        # Compute metrics in real (mph) scale
         denorm_mae = np.mean(np.abs(Y_true_denorm - Y_pred_denorm))
         denorm_rmse = np.sqrt(np.mean((Y_true_denorm - Y_pred_denorm) ** 2))
 
         print(f"Test (normalized): MAE={avg_mae:.4f}, RMSE={rmse:.4f}")
         print(f"Test (denormalized): MAE={denorm_mae:.3f} mph, RMSE={denorm_rmse:.3f} mph")
+        print(f"Features={num_stats}, Predicted sensors={num_pred_sensors}, Using first {min_len} aligned features")
 
         return denorm_mae, denorm_rmse, Y_pred, Y_true
 
