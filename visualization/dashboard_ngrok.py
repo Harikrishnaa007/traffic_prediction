@@ -51,40 +51,57 @@ def load_dataset(dataset_path):
 # ===============================
 def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     """
-    Predicts next few timesteps for a selected sensor.
-    Uses the full feature set for model input, extracts only one sensor for plotting.
+    Predicts the next few timesteps for a selected sensor.
+
+    ✅ Works for both METR-LA and PEMS-BAY
+    ✅ Handles extra time features safely
+    ✅ Avoids shape/broadcasting errors
+    ✅ Ensures consistent de-normalization and indexing
     """
+    import torch
+    import numpy as np
+
+    # --- 1️⃣ Create windowed dataset ---
     (X_train, Y_train), (X_val, Y_val), (X_test, Y_test) = create_windowed_dataset(df_time)
 
-    # Take the latest input window
+    # --- 2️⃣ Take the latest input window ---
     X_latest = X_test[-1:].clone().detach().to(device)
 
-    # Run prediction
+    # --- 3️⃣ Run model inference ---
     with torch.no_grad():
-        preds = model(X_latest).cpu().numpy()[0]  # shape: (output_len, num_sensors)
+        preds = model(X_latest).cpu().numpy()[0]  # shape: (output_len, total_features)
+    
+    total_features = preds.shape[1]  # e.g., 215 for METR-LA, 333 for PEMS-BAY
+    num_sensors = len(std)           # e.g., 207 or 325 (true sensors)
 
-    num_sensors = preds.shape[1]
+    # --- 4️⃣ Extract ground-truth targets for sensors only ---
     Y_true = Y_test[-1].numpy()[:, :num_sensors]
 
-    # 🔧 Match std/mean only to sensor columns
-    sensor_cols = std.index[:num_sensors]
-    std_sensors = std[sensor_cols].values
-    mean_sensors = mean[sensor_cols].values
+    # --- 5️⃣ Match normalization statistics for sensors ---
+    sensor_cols = std.index
+    std_sensors = std.values
+    mean_sensors = mean.values
 
-    # ✅ Denormalize predictions
-    preds = preds * std_sensors + mean_sensors
-    actual = (Y_true * std_sensors) + mean_sensors
+    # --- 6️⃣ Denormalize only the sensor outputs ---
+    preds_sensors = preds[:, :num_sensors] * std_sensors + mean_sensors
+    actual_sensors = (Y_true * std_sensors) + mean_sensors
 
-    # ✅ Correct sensor index lookup
+    # --- 7️⃣ Get the correct sensor index ---
     sensor_idx = list(sensor_cols).index(sensor_id)
-    preds_sensor = preds[:, sensor_idx]
-    actual_sensor = actual[:, sensor_idx]
 
-    # ✅ Debug check (optional)
-    print(f"Sensor {sensor_id}: Pred range {preds_sensor.min():.2f}-{preds_sensor.max():.2f}, "
-          f"Actual range {actual_sensor.min():.2f}-{actual_sensor.max():.2f}")
+    # --- 8️⃣ Extract the selected sensor’s prediction and actual values ---
+    preds_sensor = preds_sensors[:, sensor_idx]
+    actual_sensor = actual_sensors[:, sensor_idx]
+
+    # --- ✅ Debug sanity check (optional, safe to keep) ---
+    print(
+        f"[{sensor_id}] preds range {preds_sensor.min():.2f}-{preds_sensor.max():.2f}, "
+        f"actual range {actual_sensor.min():.2f}-{actual_sensor.max():.2f}, "
+        f"features={total_features}, sensors={num_sensors}"
+    )
 
     return preds_sensor, actual_sensor
+
 
 
 # ===============================
