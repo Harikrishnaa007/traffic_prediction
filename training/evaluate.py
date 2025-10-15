@@ -1,7 +1,7 @@
 """
 Model evaluation for Hybrid LSTM + TransformerXL.
 Computes MAE, RMSE, and returns predictions for visualization.
-Now supports denormalized evaluation.
+Now supports denormalized evaluation with automatic dimension alignment.
 """
 
 import torch
@@ -9,12 +9,11 @@ import torch.nn as nn
 import numpy as np
 from math import sqrt
 
+
 def evaluate_model(model, test_loader, device="cuda", mean=None, std=None):
     """
-    Evaluates the model on test data.
-    
-    If mean/std are provided, results are computed in the denormalized scale (mph).
-    Otherwise, results are computed in normalized Z-score scale.
+    Evaluates the model on test data and returns (MAE, RMSE, Y_pred, Y_true).
+    Automatically handles dimensional mismatch between input and output sensors.
     """
     model.eval()
     model.to(device)
@@ -30,40 +29,45 @@ def evaluate_model(model, test_loader, device="cuda", mean=None, std=None):
             X, Y = X.to(device), Y.to(device)
             preds = model(X)
 
-            # Store for later metric computation
-            all_preds.append(preds.cpu())
-            all_trues.append(Y.cpu())
-
             mse = criterion(preds, Y).item()
             mae = mae_fn(preds, Y).item()
+
             total_mse += mse
             total_mae += mae
             count += 1
 
-    # Combine batches
-    Y_pred = torch.cat(all_preds)
-    Y_true = torch.cat(all_trues)
+            all_preds.append(preds.cpu())
+            all_trues.append(Y.cpu())
 
-    # --- Normalized metrics (Z-score units) ---
     avg_mse = total_mse / count
     avg_mae = total_mae / count
     rmse = sqrt(avg_mse)
 
+    Y_pred = torch.cat(all_preds)
+    Y_true = torch.cat(all_trues)
+
     # --- Optional denormalization ---
     if mean is not None and std is not None:
-        # Convert mean/std to numpy arrays
-        mean = np.array(mean)
-        std = np.array(std)
+        # Convert to numpy
+        Y_pred_np = Y_pred.numpy()
+        Y_true_np = Y_true.numpy()
 
-        # Handle tensor shape: (samples, time_steps, sensors)
-        Y_pred_np = Y_pred.numpy() * std + mean
-        Y_true_np = Y_true.numpy() * std + mean
+        # Extract only the sensor columns (match prediction dimension)
+        num_sensors = Y_pred_np.shape[-1]
 
-        denorm_mae = np.mean(np.abs(Y_true_np - Y_pred_np))
-        denorm_rmse = np.sqrt(np.mean((Y_true_np - Y_pred_np) ** 2))
+        mean_sensors = np.array(mean[:num_sensors])
+        std_sensors = np.array(std[:num_sensors])
 
-        print(f"Test (normalized) → MAE: {avg_mae:.4f}, RMSE: {rmse:.4f}")
-        print(f"Test (denormalized) → MAE: {denorm_mae:.3f} mph, RMSE: {denorm_rmse:.3f} mph")
+        # Broadcast correctly: (samples, horizon, sensors)
+        Y_pred_denorm = Y_pred_np * std_sensors + mean_sensors
+        Y_true_denorm = Y_true_np * std_sensors + mean_sensors
+
+        # Compute metrics in real (mph) scale
+        denorm_mae = np.mean(np.abs(Y_true_denorm - Y_pred_denorm))
+        denorm_rmse = np.sqrt(np.mean((Y_true_denorm - Y_pred_denorm) ** 2))
+
+        print(f"Test (normalized): MAE={avg_mae:.4f}, RMSE={rmse:.4f}")
+        print(f"Test (denormalized): MAE={denorm_mae:.3f} mph, RMSE={denorm_rmse:.3f} mph")
 
         return denorm_mae, denorm_rmse, Y_pred, Y_true
 
