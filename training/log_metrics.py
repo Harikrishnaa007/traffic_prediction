@@ -19,7 +19,10 @@ def log_experiment(
     test_rmse=None,
     early_stop_epoch=None,
     device="cuda",
-    notes=""
+    notes="",
+    scheduler=None,
+    dropout=None,
+    batch_size=None
 ):
     """Logs experiment details and results into a CSV file."""
 
@@ -44,6 +47,13 @@ def log_experiment(
 
     # Create file if it doesn't exist
     file_exists = os.path.isfile(log_path)
+
+    # Auto-generate summary of key parameters
+    auto_notes = f"Scheduler={scheduler}, Dropout={dropout}, Batch={batch_size}"
+    if notes:
+        notes = f"{notes} | {auto_notes}"
+    else:
+        notes = auto_notes
 
     with open(log_path, mode="a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
