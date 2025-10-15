@@ -2,10 +2,10 @@
 🚦 Traffic Prediction Dashboard (Ngrok Version)
 ----------------------------------------------
 Choose dataset (METR-LA / PEMS-BAY), load model, and view predicted vs actual speeds.
-Runs in Google Colab using Ngrok.
+Now includes on-screen MAE/RMSE metrics and debug information.
 """
 
-# --- ✅ FIX IMPORT PATHS for Colab / Ngrok execution ---
+# --- ✅ Fix imports for Colab execution ---
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 print("✅ Repo root added to sys.path:", sys.path[-1])
@@ -15,6 +15,7 @@ import streamlit as st
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from models.hybrid_model import HybridModel
 from preprocessing.preprocess import load_and_clean_data, normalize_data
 from preprocessing.features import add_time_features
@@ -47,59 +48,61 @@ def load_dataset(dataset_path):
 
 
 # ===============================
-# 🧠 Prediction helper (final version)
+# 🧠 Prediction helper (with metrics + debug info)
 # ===============================
 def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     """
-    Predicts the next few timesteps for a selected sensor.
-
-    ✅ Works for both METR-LA and PEMS-BAY
-    ✅ Handles extra time features safely
-    ✅ Avoids shape/broadcasting errors
-    ✅ Ensures consistent de-normalization and indexing
+    Predicts next few timesteps for a selected sensor.
+    Handles both METR-LA and PEMS-BAY automatically.
     """
     import torch
     import numpy as np
 
-    # --- 1️⃣ Create windowed dataset ---
+    # --- Create windowed dataset ---
     (X_train, Y_train), (X_val, Y_val), (X_test, Y_test) = create_windowed_dataset(df_time)
 
-    # --- 2️⃣ Take the latest input window ---
+    # --- Latest input window ---
     X_latest = X_test[-1:].clone().detach().to(device)
 
-    # --- 3️⃣ Run model inference ---
+    # --- Run model ---
     with torch.no_grad():
         preds = model(X_latest).cpu().numpy()[0]  # shape: (output_len, total_features)
-    
-    total_features = preds.shape[1]  # e.g., 215 for METR-LA, 333 for PEMS-BAY
-    num_sensors = len(std)           # e.g., 207 or 325 (true sensors)
 
-    # --- 4️⃣ Extract ground-truth targets for sensors only ---
+    total_features = preds.shape[1]
+    num_sensors = len(std)  # real sensor count (e.g., 207 or 325)
+
+    # --- Extract true target window for sensors only ---
     Y_true = Y_test[-1].numpy()[:, :num_sensors]
 
-    # --- 5️⃣ Match normalization statistics for sensors ---
+    # --- Match normalization stats ---
     sensor_cols = std.index
     std_sensors = std.values
     mean_sensors = mean.values
 
-    # --- 6️⃣ Denormalize only the sensor outputs ---
+    # --- Denormalize ---
     preds_sensors = preds[:, :num_sensors] * std_sensors + mean_sensors
     actual_sensors = (Y_true * std_sensors) + mean_sensors
 
-    # --- 7️⃣ Get the correct sensor index ---
+    # --- Sensor index ---
     sensor_idx = list(sensor_cols).index(sensor_id)
 
-    # --- 8️⃣ Extract the selected sensor’s prediction and actual values ---
+    # --- Selected sensor values ---
     preds_sensor = preds_sensors[:, sensor_idx]
     actual_sensor = actual_sensors[:, sensor_idx]
 
-    # --- ✅ Debug sanity check ---
-    print(f"\n[{sensor_id}]")
-    print(f"Preds (normalized) sample: {preds_sensor[:6]}")
-    print(f"Actual (normalized) sample: {actual_sensor[:6]}")
-    print(f"Preds mean/std: {preds_sensor.mean():.3f}/{preds_sensor.std():.3f}")
-    print(f"Actual mean/std: {actual_sensor.mean():.3f}/{actual_sensor.std():.3f}")
-    print(f"features={total_features}, sensors={num_sensors}")
+    # --- Compute metrics ---
+    mae = mean_absolute_error(actual_sensor, preds_sensor)
+    rmse = mean_squared_error(actual_sensor, preds_sensor, squared=False)
+
+    # --- Display metrics + debug info directly in Streamlit ---
+    st.markdown(f"""
+    ### ⚙️ Prediction Summary
+    **Sensor:** `{sensor_id}`  
+    **Preds mean/std:** {preds_sensor.mean():.3f} / {preds_sensor.std():.3f}  
+    **Actual mean/std:** {actual_sensor.mean():.3f} / {actual_sensor.std():.3f}  
+    **Features:** {total_features} **Sensors:** {num_sensors}  
+    **MAE:** {mae:.3f} mph **RMSE:** {rmse:.3f} mph
+    """)
 
     return preds_sensor, actual_sensor
 
@@ -149,7 +152,7 @@ def main():
     st.success(f"✅ Model & Dataset ready for {dataset_choice}")
     st.write(f"📊 Dataset shape: {df_time.shape}")
 
-    # ✅ Limit selection to actual sensor columns only
+    # Limit selection to actual sensor columns
     sensor_cols = std.index
     sensor_id = st.selectbox("Select Sensor ID", sensor_cols)
 
