@@ -5,6 +5,12 @@ Choose dataset (METR-LA / PEMS-BAY), load model, and view predicted vs actual sp
 Runs in Google Colab using Ngrok.
 """
 
+# --- ✅ FIX IMPORT PATHS for Colab / Ngrok execution ---
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+print("✅ Repo root added to sys.path:", sys.path[-1])
+
+
 import streamlit as st
 import torch
 import numpy as np
