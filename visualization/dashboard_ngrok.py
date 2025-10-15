@@ -50,21 +50,28 @@ def load_dataset(dataset_path):
 # 🧠 Prediction helper (fixed)
 # ===============================
 def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
+    """
+    Predicts next few timesteps for a selected sensor.
+    Uses the full feature set for model input, extracts only one sensor for plotting.
+    """
     (X_train, Y_train), (X_val, Y_val), (X_test, Y_test) = create_windowed_dataset(df_time)
 
+    # Take the latest input window
     X_latest = X_test[-1:].clone().detach().to(device)
+
+    # Run prediction
     with torch.no_grad():
-        preds = model(X_latest).cpu().numpy()[0]  # (output_len, num_sensors)
+        preds = model(X_latest).cpu().numpy()[0]  # shape: (output_len, num_sensors)
 
     num_sensors = preds.shape[1]
     Y_true = Y_test[-1].numpy()[:, :num_sensors]
 
-    # Match scaling only to sensors
+    # 🔧 Match std/mean only to sensor columns
     sensor_cols = std.index[:num_sensors]
     std_sensors = std[sensor_cols].values
     mean_sensors = mean[sensor_cols].values
 
-    # ✅ Denormalize
+    # ✅ Denormalize predictions
     preds = preds * std_sensors + mean_sensors
     actual = (Y_true * std_sensors) + mean_sensors
 
@@ -73,13 +80,11 @@ def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     preds_sensor = preds[:, sensor_idx]
     actual_sensor = actual[:, sensor_idx]
 
-    # ✅ Optional: print sanity check
+    # ✅ Debug check (optional)
     print(f"Sensor {sensor_id}: Pred range {preds_sensor.min():.2f}-{preds_sensor.max():.2f}, "
           f"Actual range {actual_sensor.min():.2f}-{actual_sensor.max():.2f}")
 
     return preds_sensor, actual_sensor
-
-
 
 
 # ===============================
@@ -127,8 +132,9 @@ def main():
     st.success(f"✅ Model & Dataset ready for {dataset_choice}")
     st.write(f"📊 Dataset shape: {df_time.shape}")
 
-    # Sensor selection
-    sensor_id = st.selectbox("Select Sensor ID", df_time.columns)
+    # ✅ Limit selection to actual sensor columns only
+    sensor_cols = std.index
+    sensor_id = st.selectbox("Select Sensor ID", sensor_cols)
 
     # Generate predictions
     preds, actual = predict_for_sensor(model, df_time, sensor_id, mean, std, device)
