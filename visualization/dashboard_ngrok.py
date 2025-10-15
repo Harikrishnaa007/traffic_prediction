@@ -64,15 +64,18 @@ def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     with torch.no_grad():
         preds = model(X_latest).cpu().numpy()[0]  # shape: (output_len, num_sensors)
 
-    # 🔧 Match std/mean only to output sensor dimension (Y_test)
-    num_sensors = Y_test.shape[-1]  # this is the number of target sensors (e.g. 207)
+    # 🔧 Ensure target Y matches only sensors, not time features
+    num_sensors = preds.shape[1]  # e.g. 207 for METR-LA, 325 for PEMS-BAY
+    Y_true = Y_test[-1].numpy()[:, :num_sensors]  # slice only sensor columns
+
+    # 🔧 Match std/mean only to sensors
     sensor_cols = std.index[:num_sensors]
     std_sensors = std[sensor_cols].values
     mean_sensors = mean[sensor_cols].values
 
-    # Denormalize predictions and actuals
+    # Denormalize
     preds = preds * std_sensors + mean_sensors
-    actual = (Y_test[-1].numpy() * std_sensors) + mean_sensors
+    actual = (Y_true * std_sensors) + mean_sensors
 
     # Extract only the selected sensor’s predictions
     sensor_idx = list(df_time.columns).index(sensor_id)
@@ -80,6 +83,7 @@ def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
     actual_sensor = actual[:, sensor_idx]
 
     return preds_sensor, actual_sensor
+
 
 
 
