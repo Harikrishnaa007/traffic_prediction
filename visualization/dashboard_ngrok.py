@@ -27,12 +27,24 @@ from preprocessing.windowing import create_windowed_dataset
 # ===============================
 @st.cache_resource
 def load_model(model_path, input_dim, output_dim, device="cpu"):
-    """Loads the trained Hybrid LSTM + TransformerXL model."""
+    """Loads the trained Hybrid LSTM + TransformerXL model safely."""
+    import torch
+    from models.hybrid_model import HybridModel
+
     model = HybridModel(input_dim=input_dim, output_dim=output_dim)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    state_dict = torch.load(model_path, map_location=device)
+
+    # ✅ Robust load — ignores missing or extra keys (like transformer_block.norm.*)
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    if missing:
+        print("⚠️ Missing keys ignored:", missing)
+    if unexpected:
+        print("⚠️ Unexpected keys ignored:", unexpected)
+
     model.to(device)
     model.eval()
     return model
+
 
 
 # ===============================
