@@ -50,37 +50,32 @@ def load_dataset(dataset_path):
 # 🧠 Prediction helper (fixed)
 # ===============================
 def predict_for_sensor(model, df_time, sensor_id, mean, std, device="cpu"):
-    """
-    Predicts next few timesteps for a selected sensor.
-    Uses the full feature set for model input, extracts only one sensor for plotting.
-    """
-    # Create windowed dataset using the full feature set
     (X_train, Y_train), (X_val, Y_val), (X_test, Y_test) = create_windowed_dataset(df_time)
 
-    # Take the latest input window
     X_latest = X_test[-1:].clone().detach().to(device)
-
-    # Run prediction
     with torch.no_grad():
-        preds = model(X_latest).cpu().numpy()[0]  # shape: (output_len, num_sensors)
+        preds = model(X_latest).cpu().numpy()[0]  # (output_len, num_sensors)
 
-    # 🔧 Ensure target Y matches only sensors, not time features
-    num_sensors = preds.shape[1]  # e.g. 207 for METR-LA, 325 for PEMS-BAY
-    Y_true = Y_test[-1].numpy()[:, :num_sensors]  # slice only sensor columns
+    num_sensors = preds.shape[1]
+    Y_true = Y_test[-1].numpy()[:, :num_sensors]
 
-    # 🔧 Match std/mean only to sensors
+    # Match scaling only to sensors
     sensor_cols = std.index[:num_sensors]
     std_sensors = std[sensor_cols].values
     mean_sensors = mean[sensor_cols].values
 
-    # Denormalize
+    # ✅ Denormalize
     preds = preds * std_sensors + mean_sensors
     actual = (Y_true * std_sensors) + mean_sensors
 
-    # Extract only the selected sensor’s predictions
-    sensor_idx = list(df_time.columns).index(sensor_id)
+    # ✅ Correct sensor index lookup
+    sensor_idx = list(sensor_cols).index(sensor_id)
     preds_sensor = preds[:, sensor_idx]
     actual_sensor = actual[:, sensor_idx]
+
+    # ✅ Optional: print sanity check
+    print(f"Sensor {sensor_id}: Pred range {preds_sensor.min():.2f}-{preds_sensor.max():.2f}, "
+          f"Actual range {actual_sensor.min():.2f}-{actual_sensor.max():.2f}")
 
     return preds_sensor, actual_sensor
 
